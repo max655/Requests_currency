@@ -1,3 +1,4 @@
+import pandas as pd
 import requests
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
@@ -39,8 +40,9 @@ rates = []
 full_data = []
 
 for date_str in dates_to_load_str:
+    print(date_str)
     date_json = f'&date={date_str}&valcode={currency}'
-    response = requests.get(url + date_json)
+    response = requests.get(url + date_json, timeout=100)
 
     if response.status_code == 200:
         data = response.json()
@@ -49,6 +51,10 @@ for date_str in dates_to_load_str:
         if data:
             dates.append(date_str)
             rates.append(data[0]['rate'])
+    else:
+        print(f"Request failed: {requests.exceptions.RequestException}")
+
+
 
 # cursor.execute('DROP TABLE IF EXISTS exchange_rates')
 cursor.execute('''
@@ -81,8 +87,19 @@ conn.commit()
 conn.close()
 
 print("Data has been successfully saved to the database.")
+
+data = {'Date': dates, 'Rate': rates}
+df = pd.DataFrame(data)
+
+df['Date'] = pd.to_datetime(df['Date'])
+
+df['Week'] = df['Date'].dt.to_period('W')
+weekly_average = df.groupby('Week')['Rate'].mean()
+
+weekly_dates = weekly_average.index.to_timestamp()
+
 fig, ax = plt.subplots(figsize=(14, 10))
-plt.plot(dates, rates, label='Exchange Rate')
+plt.plot(weekly_dates, weekly_average, label='Exchange Rate')
 
 locator = AutoDateLocator()
 ax.xaxis.set_major_locator(locator)
