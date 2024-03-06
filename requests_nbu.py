@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 from matplotlib.dates import AutoDateLocator, AutoDateFormatter
 import sqlite3
+import time
 
 conn = sqlite3.connect('exchange_rates.db')
 cursor = conn.cursor()
@@ -39,20 +40,31 @@ dates = []
 rates = []
 full_data = []
 
+max_entries = 3
+retry_delay = 2
+
 for date_str in dates_to_load_str:
     print(date_str)
     date_json = f'&date={date_str}&valcode={currency}'
-    try:
-        response = requests.get(url + date_json)
-        if response.status_code == 200:
-            data = response.json()
-            for entry in data:
-                full_data.append(entry)
-            if data:
-                dates.append(date_str)
-                rates.append(data[0]['rate'])
-    except requests.exceptions.RequestException as e:
-        print(f"Request failed: {e}")
+
+    for retry_count in range(max_entries):
+        try:
+            response = requests.get(url + date_json)
+            if response.status_code == 200:
+                data = response.json()
+                for entry in data:
+                    full_data.append(entry)
+                if data:
+                    dates.append(date_str)
+                    rates.append(data[0]['rate'])
+            break
+        except requests.exceptions.RequestException as e:
+            print(f"Request failed: {e}")
+            if retry_count < max_entries - 1:
+                print(f"Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                print(f"Maximum retries reached. Exiting...")
 
 # cursor.execute('DROP TABLE IF EXISTS exchange_rates')
 cursor.execute('''
