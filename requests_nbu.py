@@ -42,19 +42,17 @@ full_data = []
 for date_str in dates_to_load_str:
     print(date_str)
     date_json = f'&date={date_str}&valcode={currency}'
-    response = requests.get(url + date_json, timeout=100)
-
-    if response.status_code == 200:
-        data = response.json()
-        for entry in data:
-            full_data.append(entry)
-        if data:
-            dates.append(date_str)
-            rates.append(data[0]['rate'])
-    else:
-        print(f"Request failed: {requests.exceptions.RequestException}")
-
-
+    try:
+        response = requests.get(url + date_json)
+        if response.status_code == 200:
+            data = response.json()
+            for entry in data:
+                full_data.append(entry)
+            if data:
+                dates.append(date_str)
+                rates.append(data[0]['rate'])
+    except requests.exceptions.RequestException as e:
+        print(f"Request failed: {e}")
 
 # cursor.execute('DROP TABLE IF EXISTS exchange_rates')
 cursor.execute('''
