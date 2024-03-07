@@ -10,9 +10,12 @@ import sqlite3
 conn = sqlite3.connect('exchange_rates.db')
 cursor = conn.cursor()
 
-cursor.execute("SELECT * FROM exchange_rates WHERE cc = 'USD' and exchange_date BETWEEN 20240101 AND 20240307 "
+cursor.execute("SELECT * FROM exchange_rates WHERE cc = 'USD' and exchange_date BETWEEN 20140101 AND 20150101 "
                "ORDER BY exchange_date ASC")
 data = cursor.fetchall()
+for row in data:
+    print(row)
+
 
 df = pd.DataFrame(data, columns=['r030', 'txt', 'rate', 'cc', 'exchange_date'])
 
@@ -22,7 +25,7 @@ df.set_index('exchange_date', inplace=True)
 
 start_index = int(0.8 * len(df))
 
-df['rate'].plot(figsize=(12, 6))
+df['rate'][start_index:].plot(figsize=(12, 6))
 plt.title('Time Series Plot')
 plt.show()
 
@@ -32,7 +35,6 @@ df[['rate']] = scaler.fit_transform(df[['rate']])
 
 # Convert DataFrame to PyTorch tensors
 data = torch.FloatTensor(df['rate'].values).view(-1, 1)
-
 
 # Define a function to create input sequences and corresponding labels
 def create_sequences(data, seq_length):
@@ -44,11 +46,11 @@ def create_sequences(data, seq_length):
         labels.append(label)
     return torch.stack(sequences), torch.stack(labels)
 
-
-# Create sequences
-seq_length = 10
+# Set the sequence length and create sequences
+seq_length = 10  # You can adjust this parameter
 sequences, labels = create_sequences(data, seq_length)
 
+# Train-Test Split
 train_size = int(len(sequences) * 0.8)
 train_sequences, test_sequences = sequences[:train_size], sequences[train_size:]
 train_labels, test_labels = labels[:train_size], labels[train_size:]
@@ -77,7 +79,7 @@ optimizer = optim.Adam(model.parameters(), lr=0.001)
 # Train the model
 epochs = 50
 for epoch in range(epochs):
-    for seq, lbls in zip(sequences, labels):
+    for seq, labels in zip(train_sequences, train_labels):
         optimizer.zero_grad()
         model.hidden_cell = (torch.zeros(1, 1, model.hidden_layer_size),
                              torch.zeros(1, 1, model.hidden_layer_size))
@@ -92,35 +94,18 @@ for epoch in range(epochs):
 model.eval()
 test_predictions = []
 
-last_sequences = sequences[-50:]
-
-last_data_values = df['rate'].tail(seq_length).values
-
-last_data = torch.FloatTensor(last_data_values).view(-1, 1)
-future_time_steps = 50
-new_predictions = []
-
-# Прогноз для кожного майбутнього часового кроку
-with torch.no_grad():
-    for _ in range(future_time_steps):
-        model.hidden_cell = (torch.zeros(1, 1, model.hidden_layer_size),
-                             torch.zeros(1, 1, model.hidden_layer_size))
-        prediction = model(last_sequences.view(-1, 1)).item()
-        new_predictions.append(prediction)
-
-        # Оновлення last_data для використання в наступному кроці
-        last_data = torch.cat((last_data[0][1:], torch.tensor([[prediction]])))
-
+for seq in test_sequences:
+    with torch.no_grad():
+        model.hidden = (torch.zeros(1, 1, model.hidden_layer_size),
+                        torch.zeros(1, 1, model.hidden_layer_size))
+        test_predictions.append(model(seq).item())
 
 # Inverse Transform to get the original scale
-# test_predictions = scaler.inverse_transform(np.array(test_predictions).reshape(-1, 1))
-
-# test_labels = scaler.inverse_transform(test_labels.numpy().reshape(-1, 1))
-new_pr = scaler.inverse_transform(np.array(new_predictions).reshape(-1, 1))
-print(new_pr)
+test_predictions = scaler.inverse_transform(np.array(test_predictions).reshape(-1, 1))
+test_labels = scaler.inverse_transform(test_labels.numpy().reshape(-1, 1))
 
 # Plotting
-plt.plot(new_pr, label='Predicted')
-# plt.plot(test_labels, label='True')
+plt.plot(test_predictions, label='Predicted')
+plt.plot(test_labels, label='True')
 plt.legend()
 plt.show()
