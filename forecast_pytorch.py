@@ -13,9 +13,6 @@ cursor = conn.cursor()
 cursor.execute("SELECT * FROM exchange_rates WHERE cc = 'USD' and exchange_date BETWEEN 20140101 AND 20150101 "
                "ORDER BY exchange_date ASC")
 data = cursor.fetchall()
-for row in data:
-    print(row)
-
 
 df = pd.DataFrame(data, columns=['r030', 'txt', 'rate', 'cc', 'exchange_date'])
 
@@ -46,14 +43,16 @@ def create_sequences(data, seq_length):
         labels.append(label)
     return torch.stack(sequences), torch.stack(labels)
 
+
 # Set the sequence length and create sequences
-seq_length = 10  # You can adjust this parameter
+seq_length = 10
 sequences, labels = create_sequences(data, seq_length)
 
 # Train-Test Split
 train_size = int(len(sequences) * 0.8)
 train_sequences, test_sequences = sequences[:train_size], sequences[train_size:]
 train_labels, test_labels = labels[:train_size], labels[train_size:]
+
 
 # Define the LSTM model
 class LSTMModel(nn.Module):
