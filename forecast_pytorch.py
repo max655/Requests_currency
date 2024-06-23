@@ -10,7 +10,7 @@ import sqlite3
 conn = sqlite3.connect('exchange_rates.db')
 cursor = conn.cursor()
 
-cursor.execute("SELECT * FROM exchange_rates WHERE cc = 'USD' and exchange_date BETWEEN 20140101 AND 20150101 "
+cursor.execute("SELECT * FROM exchange_rates WHERE cc = 'USD' and exchange_date BETWEEN 20190101 AND 20190505 "
                "ORDER BY exchange_date ASC")
 data = cursor.fetchall()
 
@@ -33,12 +33,13 @@ df[['rate']] = scaler.fit_transform(df[['rate']])
 # Convert DataFrame to PyTorch tensors
 data = torch.FloatTensor(df['rate'].values).view(-1, 1)
 
+
 # Define a function to create input sequences and corresponding labels
 def create_sequences(data, seq_length):
     sequences, labels = [], []
     for i in range(len(data) - seq_length):
         seq = data[i:i + seq_length]
-        label = data[i + seq_length:i + seq_length + 1]
+        label = data[i + seq_length]
         sequences.append(seq)
         labels.append(label)
     return torch.stack(sequences), torch.stack(labels)
@@ -78,6 +79,7 @@ optimizer = optim.Adam(model.parameters(), lr=0.001)
 # Train the model
 epochs = 50
 for epoch in range(epochs):
+    losses = []
     for seq, labels in zip(train_sequences, train_labels):
         optimizer.zero_grad()
         model.hidden_cell = (torch.zeros(1, 1, model.hidden_layer_size),
@@ -88,16 +90,29 @@ for epoch in range(epochs):
         single_loss = criterion(y_pred, labels)
         single_loss.backward()
         optimizer.step()
+        losses.append(single_loss.item())
+
+    if epoch % 10 == 0:
+        train_rmse = np.sqrt(np.mean(losses))
+        print(f'Epoch {epoch}/{epochs}, Train RMSE: {train_rmse:.6f}')
 
 # Evaluate the model
 model.eval()
 test_predictions = []
+test_losses = []
 
 for seq in test_sequences:
     with torch.no_grad():
         model.hidden = (torch.zeros(1, 1, model.hidden_layer_size),
                         torch.zeros(1, 1, model.hidden_layer_size))
-        test_predictions.append(model(seq).item())
+        output = model(seq)
+
+        test_loss = criterion(output, labels)
+        test_losses.append(test_loss.item())
+        test_predictions.append(output.item())
+
+test_rmse = np.sqrt(np.mean(test_losses))
+print(f'Test RMSE: {test_rmse:.6f}')
 
 # Inverse Transform to get the original scale
 test_predictions = scaler.inverse_transform(np.array(test_predictions).reshape(-1, 1))
