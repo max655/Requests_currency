@@ -10,7 +10,7 @@ import sqlite3
 conn = sqlite3.connect('exchange_rates.db')
 cursor = conn.cursor()
 
-cursor.execute("SELECT * FROM exchange_rates WHERE cc = 'USD' and exchange_date BETWEEN 20190101 AND 20190505 "
+cursor.execute("SELECT * FROM exchange_rates WHERE cc = 'USD' and exchange_date BETWEEN 20180505 AND 20190505 "
                "ORDER BY exchange_date ASC")
 data = cursor.fetchall()
 
@@ -20,9 +20,7 @@ df['exchange_date'] = pd.to_datetime(df['exchange_date'], format="%Y%m%d")
 
 df.set_index('exchange_date', inplace=True)
 
-start_index = int(0.8 * len(df))
-
-df['rate'][start_index:].plot(figsize=(12, 6))
+df['rate'].plot(figsize=(12, 6))
 plt.title('Time Series Plot')
 plt.show()
 
@@ -50,7 +48,7 @@ seq_length = 10
 sequences, labels = create_sequences(data, seq_length)
 
 # Train-Test Split
-train_size = int(len(sequences) * 0.8)
+train_size = int(len(sequences) * 0.7)
 train_sequences, test_sequences = sequences[:train_size], sequences[train_size:]
 train_labels, test_labels = labels[:train_size], labels[train_size:]
 
@@ -77,7 +75,7 @@ criterion = nn.MSELoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
 # Train the model
-epochs = 50
+epochs = 500
 for epoch in range(epochs):
     losses = []
     for seq, labels in zip(train_sequences, train_labels):
@@ -114,12 +112,43 @@ for seq in test_sequences:
 test_rmse = np.sqrt(np.mean(test_losses))
 print(f'Test RMSE: {test_rmse:.6f}')
 
+
+def predict_future(model, initial_sequence, future_steps):
+    model.eval()
+    prediction_sequence = initial_sequence.clone().detach()
+    predictions = []
+    for _ in range(future_steps):
+        with torch.no_grad():
+            model.hidden_cell = (torch.zeros(1, 1, model.hidden_layer_size),
+                                 torch.zeros(1, 1, model.hidden_layer_size))
+            prediction = model(prediction_sequence)
+            predictions.append(prediction.item())
+
+            next_input = torch.cat((prediction_sequence[1:], prediction.view(1, 1)), dim=0)
+            prediction_sequence = next_input
+    return predictions
+
+
+initial_sequence = train_sequences[-1].clone().detach()
+
+future_steps = 100
+future_predictions = predict_future(model, initial_sequence, future_steps)
+
 # Inverse Transform to get the original scale
+future_predictions = scaler.inverse_transform(np.array(future_predictions).reshape(-1, 1))
 test_predictions = scaler.inverse_transform(np.array(test_predictions).reshape(-1, 1))
 test_labels = scaler.inverse_transform(test_labels.numpy().reshape(-1, 1))
+full_data = scaler.inverse_transform(data.numpy())
 
 # Plotting
-plt.plot(test_predictions, label='Predicted')
-plt.plot(test_labels, label='True')
+plt.figure(figsize=(12, 6))
+plt.plot(full_data, label='Original Data')
+plt.plot(np.arange(len(train_sequences), len(train_sequences) + len(test_labels)),
+         test_predictions,
+         label='Test Predictions')
+plt.plot(np.arange(len(train_sequences), len(train_sequences) + future_steps),
+         future_predictions,
+         label='Future Predictions', linestyle='--', color='m')
+plt.axvline(x=len(train_sequences), color='r', linestyle='--', label='Train-Test Split')
 plt.legend()
 plt.show()
